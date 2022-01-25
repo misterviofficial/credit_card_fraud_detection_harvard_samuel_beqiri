@@ -1,0 +1,744 @@
+##title: "Credit Card Fraud Project"
+##author: "Samuel Beqiri"
+##output: pdf_document
+
+##### I. Introduction and Overview
+##### II. Dataset and Exploratory Analysis
+##### III. Methods and Analysis
+##### IV. Results
+##### V. Conclusion
+
+## I. Introduction and Overview
+
+#The dataset contains transactions made by credit cards in September 2013 by card- holders in two-day period. Of 284,807 valid transactions, 492 are listed as fraudulent. The variable ‘Time’ contains the seconds elapsed between each transaction and the first transaction in the dataset. The variable ‘Amount’ is the transaction value. The variable ‘Class’ is the response variable where 1 is a case of fraud and 0 is a valid transaction.#
+
+## II. Dataset and Exploratory Analysis
+
+```{r, echo=FALSE, include=FALSE}
+# Initial set up.
+# The following packages will be installed.
+if(!require(tidyverse)) install.packages("tidyverse") 
+if(!require(kableExtra)) install.packages("kableExtra")
+if(!require(tidyr)) install.packages("tidyr")
+if(!require(tidyverse)) install.packages("tidyverse")
+if(!require(stringr)) install.packages("stringr")
+if(!require(ggplot2)) install.packages("ggplot2")
+if(!require(gbm)) install.packages("gbm")
+if(!require(dplyr)) install.packages("dplyr")
+if(!require(caret)) install.packages("caret")
+if(!require(xgboost)) install.packages("xgboost")
+if(!require(e1071)) install.packages("e1071")
+if(!require(class)) install.packages("class")
+if(!require(ROCR)) install.packages("ROCR")
+if(!require(randomForest)) install.packages("randomForest")
+if(!require(PRROC)) install.packages("PRROC")
+if(!require(reshape2)) install.packages("reshape2")
+if(!require(corrplot)) install.packages("corrplot")
+
+# Load the following packages using the library() function.
+library(dplyr)
+library(tidyverse)
+library(kableExtra)
+library(tidyr)
+library(ggplot2)
+library(gbm)
+library(caret)
+library(xgboost)
+library(e1071)
+library(class)
+library(ROCR)
+library(randomForest)
+library(PRROC)
+library(reshape2)
+library(corrplot)
+```
+
+The dataset for this project can be downloaded here:
+
+https://www.kaggle.com/mlg-ulb/creditcardfraud
+
+```{r, echo=FALSE, include=FALSE}
+# The data was made available by kaggle.
+# The dataset (as a .csv files) can be downloaded at the following link:
+# https://www.kaggle.com/mlg-ulb/creditcardfraud
+# Save this dataset to whatever directory you wish that is accessible for this code.
+
+# Loading the dataset as a .csv file on my local system.
+# I will save it as mydataset for the credit card data set.
+mydataset <- read.csv("creditcard.csv")
+```
+
+Firstly, we will investigate the data and state initial observations we find. 
+
+The number of rows in the dataset:
+```{r, echo=FALSE}
+# Before we split our data into a training and test set,
+# we will perform some initial investigation and exploration on the data.
+
+# We determine how many rows are in the data set.
+# This is the number of transactions in the data set.
+nrow(mydataset)
+```
+
+The number of columns in the dataset:
+```{r, echo=FALSE}
+# We determine how man columns are in the data set.
+# Time, V1 - V28, Amount, Class
+ncol(mydataset)
+```
+
+We can see the first six full entries of the dataset:
+```{r, echo=FALSE}
+# We will view the full information for the first six entries.
+head(mydataset)
+```
+
+To better understand the data we present a data dictionary of the 31 variables in the dataset.
+
+* **Time** - the number of seconds elapsed between this transaction and the first transaction in the dataset
+
+* **V1-V28** is the result of a PCA Dimensionality reduction to protect user identities and sensitive features
+
+* **Amount** - the dollar value of the transaction
+
+* **Class** - 1 for fraudulent transactions, 0 for valid transactions
+
+Another way we can view the first several entries of the data set is to transpose the variable header to the left column. Additionally, we can see the set holds 31 variables for 284,807 total entries.
+```{r, echo=FALSE}
+# Another way we view the data is to use the glimpse() function.
+# This transposes the variable header to the left column. 
+# Additionally, we can see the set holds 31 variables for 284,807 observations.
+glimpse(mydataset )
+```
+
+We can also create a single table (with very small font) to show the full entries of the first 15 entries.
+```{r, echo=FALSE}
+# We can view the first 10 entries in full table format.
+mydataset  %>%
+head(n=15) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive", full_width=F),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE) %>%
+  kable_styling(latex_options = c("striped", "scale_down"))
+
+# Data Dictionary - a quick explanation of the columns in the dataset
+# Time: Number of seconds elapsed between this transaction and the 
+# first transaction in the dataset
+# V1 may be result of a PCA Dimensionality reduction to protect 
+# user identities and sensitive features(v1-v28)
+# Amount: Transaction amount
+# Class: 1 for fraudulent transactions, 0 otherwise
+```
+ 
+In table format, we see the dimensions of the full dataset.
+```{r, echo=FALSE} 
+# We will make a table of the dimensions of the data set
+# and display the table.
+data.frame("Length" = nrow(mydataset ), "Columns" = ncol(mydataset )) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 12,
+                full_width = FALSE)
+```
+
+We want to see how many transactions are fraudulent compared to 
+how many are valid. 0 is defined as a valid transaction, and 1 is defined as a fraudulent transaction.
+```{r, echo=FALSE}
+# We want to see how many transactions are fraud compared to 
+# how many are valid. 0 is defined as a valid transaction, and
+# 1 is defined as a fraudulent transaction.
+fraudlevels <- data.frame(mydataset )
+fraudlevels$Class = ifelse(mydataset $Class == 0, 'Valid', 'Fraud') %>%
+  as.factor()
+```
+
+To see the data, we plot a bar graph of the frequency of fraud verses valid credit card transactions.
+
+```{r, echo=FALSE}
+# To see the data, we plot a bar graph of the frequency of fraud 
+# verses valid credit card transactions.
+# We see that the vast majority of transactions are valid.
+fraudlevels %>%
+  ggplot(aes(Class)) +
+  geom_bar(fill = "blue") +
+  scale_x_discrete() +
+  scale_y_continuous(labels = scales::comma) +
+  labs(title = "Transaction Class in Dataset",
+       x = "Class",
+       y = "Frequency")
+```
+
+We see that the vast majority of transactions are valid - 99.828%.
+
+
+We also can confirm that there are no missing values in our data set.
+```{r, echo=FALSE}
+# We investigate if the data has any missing values.
+# We will correct for any missing values.
+# There are no missing values in this dataset.
+anyNA(mydataset )
+```
+
+Additionaly, we present a full summary of each variable in the dataset:
+```{r, echo=FALSE}
+# We can also provide a full summary of each variable
+# in the dataset.
+summary(mydataset )
+```
+
+We want to investigate the dollar amounts of fraud. Here we plot all the fraudulent transaction by amount. This plot shows a massive skew toward transactions under \$100.
+
+```{r, echo=FALSE}
+# We want to investigate the dollar amounts of fraud.
+# Here we plot all the fraudulent transaction by amount.
+# This plot shows a massive skew toward transactions under $100
+mydataset [mydataset $Class == 1,] %>%
+  ggplot(aes(Amount)) + 
+  theme_minimal()  +
+  geom_histogram(binwidth = 50, fill = "blue") +
+  labs(title = "Fraudulent Transaction Distribution",
+       x = "Dollar Amount",
+       y = "Frequency")
+```
+
+To further investigate this, we make a table of the 10 most common fraudulent transactions. By far, \$1 is the most fraudulent transaction. It is also interesting to note that a \$0 transaction and a \$99.99 transaction are tied for second in most common fraudulent transactions. 
+
+```{r, echo=FALSE}
+# To further investigate this, we make a table of the 10 most common
+# fraudulent transactions. 
+# By far, $1 is the most fraudulent transaction. It is also interesting
+# to note that a $0 transaction and a $99.99 transaction are tied for second
+# in most common fraudulent transactions. 
+mydataset [mydataset $Class == 1,] %>%
+  group_by(Amount) %>%
+  summarize(count = n()) %>%
+  arrange(desc(count)) %>%
+  head(n=10) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 14,
+                full_width = FALSE)
+```
+
+We can also investigate what are the most common valid transactions in the dataset.
+
+```{r, echo=FALSE}
+# We can also investigate what are the most common valid
+# transactions in the dataset.
+# An interesting observation is that $1 is the most common
+# fraudulent and valid transaction.
+# In fact ~0.83% of $1 transactions are fraud, compared to
+# ~0.17% - almost five times higher than other transactions
+# in the data set.
+# $99.99 is number 98 on the list of valid transactions with 303
+# transactions, but tied for second of fraudulent transactions with
+# 27. This means that 27% of $99.99 transactions are fraudulent.
+mydataset [mydataset $Class == 0,] %>% group_by(Amount) %>%
+  summarize(count = n()) %>% 
+  head(n=10) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 14,
+                full_width = FALSE)
+```
+
+An interesting observation is that \$1 is the most common fraudulent and valid transaction. In fact the chance of a transaction of \$1 being fraud is almost five times higher than other transactions in the data set.
+
+Another very interesting observations is that a transactions of \$99.99 is the 98th most common valid transactions with 303 transactions, but is tied for second of fraudulent transactions with 27. This means that ~9% of $99.99 transactions in the data set are fraudulent!
+
+Here we plot a summary of the mean and median transaction for valid and fraudulent transactions.
+
+```{r, echo=FALSE}
+# Here we plot a summary of the mean and median transaction for 
+# valid and fraudulent transactions.
+mydataset  %>% 
+  group_by(Class) %>% 
+  summarize(mean(Amount), median(Amount))
+```
+
+We can plot a distribution of valid transactions over time. This plot has a clear episodic distribution. This makes sense since a day has 86,400 seconds, which is the approximate period of this distribution. The punchline is that most transactions occur during the day, while fewer transactions occur at night. There is a clear spike of outlier transactions near the trough of the graph. We surmise that these spikes correlate to automated transactions that are processed a little before the close of midnight or shortly after midnight. An example of automated transactions would be monthly recurring bills set to autopay.
+
+```{r, echo=FALSE, fig.height=4, fig.width=6}
+# We can plot a distribution of valid transactions over time.
+# This plot has a clear episodic distribution. This makes sense since 
+# a day has 86,400 seconds, which is the approximate period of this
+# distribution. The punchline is that most transactions occur during
+# the day, while fewer transactions occur at night. 
+# There is a clear spike of outlier transactions near the trough of
+# the graph. We surmise that these spikes correlate to automated
+# transactions that are processed a little before the close of midnight
+# or shortly after midnight. An example of automated transactions 
+# would be monthly recurring bills set to autopay.
+mydataset [mydataset $Class == 0,] %>%
+  ggplot(aes(Time)) + 
+  theme_minimal()  +
+  geom_histogram(binwidth = 100, fill = "blue") +
+  labs(title = "Valid Transacations Distribution",
+       x = "Time [seconds]",
+       y = "Frequency")
+```
+
+Similarly, to the distribution of valid transactions, we can plot the distribution of fraudulent transactions over time. The lack of any clear episodic distribution indicates that fraud can occur at any time.
+
+```{r, echo=FALSE, fig.height=4, fig.width=6}
+# Similarly, to the distribution of valid transactions, we can plot
+# the distribution of fraudulent transactions over time. 
+# The lack of any clear episodic distribution indicates that
+# fraud can occur at any time.
+mydataset [mydataset $Class == 1,] %>%
+  ggplot(aes(Time)) + 
+  theme_minimal()  +
+  geom_histogram(binwidth = 25, fill = "blue") +
+  labs(title = "Fraudulent Transactions Distribution",
+       x = "Time [seconds]",
+       y = "Frequency")
+
+# To note: Without performing Fourier analysis (such as a Fast
+# Fourier Transform) on this data, we do not know with certainty 
+# that fraudulent transactions are non-episodic. This analysis is
+# beyond the scope of this project, and the frequency distribution
+# plotted above will suffice to show that fraudulent transactions
+# are not episodic and can occur at any point in time.
+```
+
+To note: Without performing Fourier analysis (such as a Fast Fourier Transform) on this data, we do not know with certainty that fraudulent transactions are non-episodic. This analysis is beyond the scope of this project, and the frequency distribution plotted above will suffice to show that fraudulent transactions are not episodic and can occur at any point in time.
+
+
+We want to calculate the correlation between the variables and graph them. We first design a correlation matrix.
+
+Here is a matrix of the correlation between the 31 distinct variables.
+
+```{r, echo=FALSE}
+# We want to calculate the correlation between the variables
+# and graph them. We first design a correlation matrix.
+
+# We obtain the lower triangle of the correlation matrix.
+get_lower_triangle<-function(cormat){
+  cormat[upper.tri(cormat)] <- NA
+  return(cormat)
+}
+
+# We obtain the upper triangle of the correlation matrix.
+get_upper_triangle <- function(cormat){
+  cormat[lower.tri(cormat)]<- NA
+  return(cormat)
+}
+
+# We then triangulate the upper and lower portions
+# to create a correlation graph.
+reorder_cormat <- function(cormat){
+  dd <- as.dist((1-cormat)/2)
+  hc <- hclust(dd)
+  cormat <-cormat[hc$order, hc$order]
+}
+
+corr_matrix <- round(cor(mydataset ),2)
+corr_matrix <- reorder_cormat(corr_matrix)
+
+# Here is a matrix of the correlation between the
+# 31 distinct variables.
+corr_matrix %>%
+head(n=31) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 14,
+                full_width = FALSE) %>%
+    kable_styling(latex_options = c("striped", "scale_down"))
+
+upper_triangle <- get_upper_triangle(corr_matrix)
+melted_corr_matrix <- melt(upper_triangle, na.rm = TRUE)
+```
+
+Further, we can plot the correlation. Notice how all the variables V1-V28 have very low correlation coefficients among each other, and especially low correlation with the 'Class' feature. This was already expected since the data was processed using PCA.
+
+```{r, echo=FALSE}
+# Further, we can plot the correlation.
+# Notice how all the variables V1-V28 have very low correlation 
+# coefficients among each other, and especially low correlation 
+# with the 'Class' feature. This was already expected since the 
+# data was processed using PCA.
+ggplot(melted_corr_matrix, aes(Var2, Var1, fill = value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "red", high = "blue", mid = "white", 
+                       midpoint = 0, limit = c(-1,1), space = "Lab", 
+                       name="Variable Correlation") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, 
+                                   size = 8, hjust = 1), axis.text.y = element_text(size = 8),                    axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.ticks = element_blank()) +
+  coord_fixed()
+```
+
+We established that fraud does not appear to coincide with a specific time of day, so the 'Time' variable will be removed from the dataset.
+
+```{r, echo=FALSE}
+# We established that fraud does not appear to coincide with
+# a specific time of day, so the "Time" variable will be 
+# removed from the dataset.
+mydataset $Class <- as.factor(mydataset $Class)
+mydataset  <- mydataset  %>% select(-Time)
+```
+
+To verify the variable 'Time' has been removed, we can view the first six entries with the head() function.
+
+```{r, echo=FALSE}
+# To verify the variable Time has been removed,
+# we can view the first six entries in full table format.
+head(mydataset )
+```
+
+## III. Methods and Analysis
+
+For this report we will investigate four models: the Naive Model, the Naive Bayes Model, the K-Nearest Neighbor Model, and the Random Forest Model.
+
+#### III.A. Naive Model
+
+The first model we design is the Naive Model. This model makes the simple prediction that every transaction is a valid transaction and that there are no fraudulent transactions. This will serve as our first attempt in trying to better the model.
+
+#### III.B. Naive Bayes Model
+
+The Naive Bayes Model is a model that applies Bayes' theorem with strong (naive) independence assumptions between the features. We build the model with the 'Class' (i.e. whether the transaction is valid or fraud) as the target and with the remaining variables are predictors.
+
+#### III.C. K-Nearest Neighbor
+
+The K-Nearest Neighbors algorithm (KNN) is a non-parametric method used for classification where the input consists of the k closest training examples in the feature space. In KNN classification (determining if the transaction was valid or fraud), the output is a class membership. An object is classified by a plurality vote of its neighbors, with the object being assigned to the class most common among its k nearest neighbors. Several values of k were tested and 5 was chosen as a value that provided the best results. In this model, 'Class' is the target and all other variables are predictors.
+
+#### III.D. Random Forest
+
+The Random Forest algorithm (sometimes called Random Decision Forests) is an algorithm of machine learning were an ensemble learning method for classification operates by constructing a multitude of decision trees at training time and outputting the class that is the mode of the classification of the individual trees. These trees are a decision tree that goes from observations about an item (represented in the branches) to conclusions about the item's target value (represented in the leaves). For this model, 'Class' (whether a transaction is valid or fraud) is the target, and all other variables are predictors. In this model we define the number of trees to be 500.
+
+## IV. Results
+
+Prior to our computations, we partition the dataset into a training set, a test set, and a cross validation set.
+
+```{r, echo=FALSE}
+#### NAIVE MODEL ####
+
+# Set seed for reproducibility.
+set.seed(13)
+
+# We need to create a training data set, a test dataset,
+# and a cross validation data set.
+# Here we partition the data.
+train_index <- createDataPartition(
+  y = mydataset $Class, 
+  p = .6, 
+  list = F)
+
+# Our training set.
+train <- mydataset [train_index,]
+
+# Temporary test dataset.
+test_cv <- mydataset [-train_index,]
+
+# We partition the test dataset.
+test_index <- createDataPartition(
+  y = test_cv$Class, 
+  p = .5, 
+  list = F)
+
+# The partitioned test dataset is split between
+# a test set and a cross validation set.
+test <- test_cv[test_index,]
+cv <- test_cv[-test_index,]
+
+# We remove the temporary files to create our datasets.
+rm(train_index, test_index, test_cv)
+```
+
+#### IV.A. Naive Model
+
+```{r, echo=FALSE}
+# Here we will create a Navie Model that will serve as a 
+# baseline. Here we will make the simple prediction that
+# every transaction is a valid transaction and that there
+# are not fraudulent transaction.
+
+# Copy the mydataset  dataframe to make the necessary
+# changes for the baseline model. 
+naive_model <- data.frame(mydataset )
+
+# We now define all transactions as valid by defining
+# all entries in the class set as valid.
+naive_model$Class = factor(0, c(0,1))
+
+# We then make the prediction of that all entries 
+# are valid transactions.
+pred <- prediction(
+  as.numeric(as.character(naive_model$Class)),
+  as.numeric(as.character(mydataset $Class)))
+
+# We need to compute the Area Under the Curve (AUC)
+# and the Area Under the Precision-Recall Curve (AUPRC).
+auc_val_naive <- performance(pred, "auc")
+auc_plot_naive <- performance(pred, 'sens', 'spec')
+auprc_plot_naive <- performance(pred, "prec", "rec")
+```
+
+When we plot sensitivty and specificty for the Naive Model, we obtain a straight diagonal line, as expected. The Area Under the Curve (AUC) for this model yeilds 0.5.
+
+```{r, echo=FALSE, fig.height=4, fig.width=6}
+# We plot the AUC for the Naive Model.
+# As expected, we obtain an area under the curve of 0.5.
+plot(auc_plot_naive, 
+     main=paste("AUC:", 
+                auc_val_naive@y.values[[1]]))
+```
+
+No line is generated for the Area Under the Precision Recall Curve (AUPRC) since these values are zero.
+
+```{r, echo=FALSE, fig.height=4, fig.width=6}
+# We plot the AUPRC for the Naive Model.
+# Since the recall and precision are both zero, there
+# is no value for the AUPRC.
+plot(auprc_plot_naive, main="AUPRC: 0")
+```
+
+We save our results from our first model in a data frame and display them.
+```{r, echo=FALSE}
+# We will create a dataframe to contain our results for AUC and AUPRC
+# for the different models tested.
+# Here we add our results for the Naive Model.
+results <- data.frame(
+  Model = "Naive", 
+  AUC = auc_val_naive@y.values[[1]],
+  AUPRC = 0)
+
+# Our results are displayed in a table format.
+results %>% 
+  kable() %>%
+  kable_styling(
+    bootstrap_options = 
+      c("striped", "hover", "condensed", "responsive"),
+    position = "center",
+    font_size = 14,
+    full_width = FALSE) 
+```
+
+Although this model has an accuracy ~99.8%, it has a AUPRC of 0, and therefore is comepletely useless for our task at hand.
+
+#### IV.B. Naive Bayes Model
+
+```{r, echo=FALSE}
+#### Naive Bayes Model ####
+
+# Set seed for reproducibility.
+set.seed(13)
+
+# For the Naive Bayes Model, we build the model with the class
+# as the target and with the remaining variables are predictors.
+
+# We start with our naive model and define the target and
+# the predictors.
+naive_model <- naiveBayes(Class ~ ., data = train, laplace=1)
+
+# We then make the prediction based on our modified dataset.
+predictions <- predict(naive_model, newdata=test)
+
+# We need to compute the Area Under the Curve (AUC)
+# and the Area Under the Precision-Recall Curve (AUPRC).
+pred <- prediction(as.numeric(predictions), test$Class)
+auc_val_naive <- performance(pred, "auc")
+auc_plot_naive <- performance(pred, 'sens', 'spec')
+auprc_plot_naive <- performance(pred, "prec", "rec")
+
+# We apply the model to our test set.
+auprc_val_naive <- pr.curve(
+  scores.class0 = predictions[test$Class == 1], 
+  scores.class1 = predictions[test$Class == 0],
+  curve = T,  
+  dg.compute = T)
+```
+
+The AUC for sensitivity versus specificity for the Naive Bayes Model is greatly improved compared to the Naive Model alone. Additionally, the AUPRC improves (albeit marginally) to just 0.05. We can improve on this with the following two models.
+
+```{r, echo=FALSE, fig.height=4, fig.width=6}
+# We plot our curves for the Naive Bayes Model.
+plot(auc_plot_naive, main=paste("AUC:", auc_val_naive@y.values[[1]]))
+plot(auprc_plot_naive, main=paste("AUPRC:", auprc_val_naive$auc.integral))
+plot(auprc_val_naive)
+```
+
+We save our results from our Naive Bayes Model in a data frame and display them with previous results.
+
+```{r, echo=FALSE}
+# Here we add our results for the Naive Bayes Model.
+results <- results %>% 
+  add_row(
+  Model = "Naive Bayes", 
+  AUC = auc_val_naive@y.values[[1]],
+  AUPRC = auprc_val_naive$auc.integral)
+
+# Our results are displayed in a table format with previous results.
+results %>%
+  kable() %>%
+  kable_styling(bootstrap_options = 
+                  c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 14,
+                full_width = FALSE)
+```
+
+#### IV.C. K-Nearest Neighbor
+
+```{r, echo=FALSE}
+#### K-Nearest Neighbors (KNN) Model ####
+
+# Set seed for reproducibility.
+set.seed(13)
+
+# Our next approach will be the K-Nearest Neighbor Model.
+# This is building off of our previous model, the Naive Bayes
+# Model, where we specify that Class is the target and all
+# other variables are predictors. For this model we set k=5.
+# Training this model takes a little bit of time.
+knn_model <- knn(train[,-30], 
+                 test[,-30], 
+                 train$Class, 
+                 k=5, 
+                 prob = TRUE)
+
+# We then make the prediction based on our modified dataset.
+pred <- prediction(
+  as.numeric(as.character(knn_model)),
+  as.numeric(as.character(test$Class)))
+
+# We need to compute the Area Under the Curve (AUC)
+# and the Area Under the Precision-Recall Curve (AUPRC).
+auc_val_knn <- performance(pred, "auc")
+auc_plot_knn <- performance(pred, 'sens', 'spec')
+auprc_plot_knn <- performance(pred, "prec", "rec")
+
+# We apply the model to our test set.
+auprc_val_knn <- pr.curve(
+  scores.class0 = knn_model[test$Class == 1], 
+  scores.class1 = knn_model[test$Class == 0],
+  curve = T,  
+  dg.compute = T)
+```
+
+For the K Nearest Neighbors, we have a small reduction for our AUC when looking at sensitivity versus specificity compared to the Naive Bayes Model, but a substantial improvement on precision versus recall in our AUPRC. This value of 0.56 is still low. We would like to achieve an AUC for precision versus recall close to 0.8.
+
+```{r, echo=FALSE, fig.height=4, fig.width=6}
+# We plot our curves for the KNN Model.
+plot(auc_plot_knn, main=paste("AUC:", auc_val_knn@y.values[[1]]))
+plot(auprc_plot_knn, main=paste("AUPRC:", auprc_val_knn$auc.integral))
+plot(auprc_val_knn)
+```
+
+We save our results from our K-Nearest Neighbor Model in a data frame and display them with previous results.
+
+```{r, echo=FALSE}
+# Here we add our results for the KNN Model.
+results <- results %>% 
+  add_row(
+  Model = "K-Nearest Neighbors", 
+  AUC = auc_val_knn@y.values[[1]],
+  AUPRC = auprc_val_knn$auc.integral)
+
+# Our results are displayed in a table format with previous results.
+results %>%
+  kable() %>%
+  kable_styling(bootstrap_options = 
+                  c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 14,
+                full_width = FALSE) 
+```
+
+
+#### IV.D. Random Forest
+
+```{r, echo=FALSE}
+#### Random Forest Model ####
+
+# Set seed for reproducibility.
+set.seed(13)
+
+# Our next approach will be the Random Forest Model.
+# As with the two previous models, we specify that Class 
+# is the target and all other variables being predictors.
+# For the Random Forest Model, we will define the number
+# of trees to be 500.
+# This takes a while to train the model.
+rf_model <- randomForest(Class ~ ., data = train, ntree = 500)
+
+# We then make the prediction based on our modified dataset.
+predictions <- predict(rf_model, newdata=test)
+
+pred <- prediction(
+  as.numeric(as.character(predictions)),
+  as.numeric(as.character(test$Class)))
+
+# We need to compute the Area Under the Curve (AUC)
+# and the Area Under the Precision-Recall Curve (AUPRC).
+auc_val_rf <- performance(pred, "auc")
+auc_plot_rf <- performance(pred, 'sens', 'spec')
+auprc_plot_rf <- performance(pred, "prec", "rec", 
+                             curve = T,  
+                             dg.compute = T)
+auprc_val_rf <- pr.curve(scores.class0 = predictions[test$Class == 1], 
+                         scores.class1 = predictions[test$Class == 0],
+                         curve = T,  
+                         dg.compute = T)
+```
+
+For our Random Forest Model, we not only obtain the best AUC for sensitivity versus specificity (0.91), but we also obtain the best AUC for precision versus recall (0.78). Out of the models developed and trained, this model is the most accurate for our task at hand. The use of 500 trees for this algorithm worked well.
+
+```{r, echo=FALSE, fig.height=4, fig.width=6}
+# We plot our curves for the Random Forest Model.
+plot(auc_plot_rf, main=paste("AUC:", auc_val_rf@y.values[[1]]))
+plot(auprc_plot_rf, main=paste("AUPRC:", auprc_val_rf$auc.integral))
+plot(auprc_val_rf)
+```
+
+We save our results from our Random Forest Model in a data frame and display them with previous results.
+
+```{r, echo=FALSE}
+# Here we add our results for the Random Forest Model.
+results <- results %>% add_row(
+  Model = "Random Forest",
+  AUC = auc_val_rf@y.values[[1]],
+  AUPRC = auprc_val_rf$auc.integral)
+
+# Our results are displayed in a table format with previous results.
+results %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 14,
+                full_width = FALSE)
+```
+
+## V. Conclusion
+
+In this report we seek to address credit card fraud using a machine learning approach. Since credit card fraud is very rare compared to the volume of valid transactions, we are posed with a machine learning problem that utilizes the accuracy of the model by calculating the Area Under the Precision-Recall Curve as opposed to a more traditional method such as a confusion matrix. 
+
+Four models were developed and each was tested with a dataset of credit card transactions provided by Kaggle. Here we again present the findings from the four models utilized for this report.
+
+```{r, echo=FALSE}
+# Our results are displayed in a table format with previous results.
+results %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 14,
+                full_width = FALSE)
+```
+
+#The model that best suited the needs of the task at hand was the Random Forest algorithm. This machine learning algorithm is an ensemble learning method for classification. 
+#It operates by constructing a multitude of decision trees at training time and outputting the class that is the mode of the classification of the individual trees.
+# In this algorithm, we defined the number of trees to be 500. 
+#Our results from the Random Forest algorithm are impressive compared to three models previously tested on this dataset.
+# We obtained an Area Under the Curve (AUC) for sensitivity versus specificity of 0.913, and an Area Under the Precision-Recall Curve (AUPRC) of 0.78. 
+#This model drastically improved the AUPRC of the K-Nearest Neighbors algorithm. Although an AUPRC of 0.8 was not achieved, our result is very close. 
+
